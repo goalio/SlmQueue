@@ -2,6 +2,7 @@
 
 namespace SlmQueue\Worker;
 
+use SlmQueue\Exception;
 use SlmQueue\Job\JobInterface;
 use SlmQueue\Options\WorkerOptions;
 use SlmQueue\Queue\QueueInterface;
@@ -16,6 +17,8 @@ use Zend\EventManager\EventManagerInterface;
  */
 abstract class AbstractWorker implements WorkerInterface, EventManagerAwareInterface
 {
+    const PCNTL_FORK_NOT_SUPPORTED = -1;
+
     /**
      * @var QueuePluginManager
      */
@@ -37,6 +40,11 @@ abstract class AbstractWorker implements WorkerInterface, EventManagerAwareInter
     protected $options;
 
     /**
+     * @var int Process ID of child worker processes.
+     */
+    protected $child = null;
+
+    /**
      * Constructor
      *
      * @param QueuePluginManager $queuePluginManager
@@ -54,6 +62,8 @@ abstract class AbstractWorker implements WorkerInterface, EventManagerAwareInter
             pcntl_signal(SIGTERM, array($this, 'handleSignal'));
             pcntl_signal(SIGINT,  array($this, 'handleSignal'));
         }
+
+
     }
 
     /**
@@ -88,12 +98,36 @@ abstract class AbstractWorker implements WorkerInterface, EventManagerAwareInter
 
             $workerEvent->setJob($job);
 
-            $eventManager->trigger(WorkerEvent::EVENT_PROCESS_JOB_PRE, $workerEvent);
+            $eventManager->trigger(WorkerEvent::EVENT_FORK_WORKER_PRE, $workerEvent);
+            $this->child = $this->fork();
 
-            $this->processJob($job, $queue);
+            if($this->child === 0 || $this->child === self::PCNTL_FORK_NOT_SUPPORTED) {
+                // child process or unforked
+                $workerEvent->setParam('exception', null);
+                $eventManager->trigger(WorkerEvent::EVENT_PROCESS_JOB_PRE, $workerEvent);
+
+                $exception = $this->processJob($job, $queue);
+
+                $workerEvent->setParam('exception', $exception);
+                $eventManager->trigger(WorkerEvent::EVENT_PROCESS_JOB_POST, $workerEvent);
+
+                if($this->child === 0) {
+                    // Exit forked child process
+                    exit((int) $result);
+                }
+            }
+            else {
+                // Parent process
+                pcntl_wait($status);
+                $exitStatus = pcntl_wexitstatus($status);
+                $workerEvent->setParam('exitStatus', $exitStatus);
+            }
+
+            $eventManager->trigger(WorkerEvent::EVENT_FORK_WORKER_POST, $workerEvent);
+            $this->child = null;
+
             $count++;
-
-            $eventManager->trigger(WorkerEvent::EVENT_PROCESS_JOB_POST, $workerEvent);
+            $workerEvent->setParam('count', $count);
 
             // Check for internal stop condition
             if ($this->isMaxRunsReached($count) || $this->isMaxMemoryExceeded()) {
@@ -175,5 +209,24 @@ abstract class AbstractWorker implements WorkerInterface, EventManagerAwareInter
                 $this->stopped = true;
                 break;
         }
+    }
+
+    /**
+     * Fork the current process
+     *
+     * @return int 0 for child, pid for parent, -1 if error
+     */
+    protected function fork()
+    {
+        if(!function_exists('pcntl_fork')) {
+            return self::PCNTL_FORK_NOT_SUPPORTED;
+        }
+
+        $pid = pcntl_fork();
+        if($pid === -1) {
+            throw new Exception\RuntimeException('Unable to fork child worker.');
+        }
+
+        return $pid;
     }
 }

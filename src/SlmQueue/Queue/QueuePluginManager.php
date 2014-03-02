@@ -3,6 +3,7 @@
 namespace SlmQueue\Queue;
 
 use Zend\ServiceManager\AbstractPluginManager;
+use Zend\ServiceManager\DelegatorFactoryInterface;
 
 /**
  * QueuePluginManager
@@ -14,7 +15,7 @@ class QueuePluginManager extends AbstractPluginManager
      */
     public function validatePlugin($plugin)
     {
-        if ($plugin instanceof QueueInterface) {
+        if ($plugin instanceof QueueInterface || $plugin instanceof DelegatorFactoryInterface) {
             return; // we're okay!
         }
 
