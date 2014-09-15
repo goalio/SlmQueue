@@ -18,6 +18,8 @@ class WorkerEvent extends Event
     const EVENT_PROCESS_QUEUE_POST = 'processQueue.post';
     const EVENT_PROCESS_JOB_PRE    = 'processJob.pre';
     const EVENT_PROCESS_JOB_POST   = 'processJob.post';
+    const EVENT_FORK_WORKER_PRE    = 'forkWorker.pre';
+    const EVENT_FORK_WORKER_POST   = 'forkWorker.post';
 
     /**
      * Status for unstarted jobs
