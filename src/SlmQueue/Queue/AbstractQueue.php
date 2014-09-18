@@ -65,15 +65,9 @@ abstract class AbstractQueue implements QueueInterface
         $metadata += $data['metadata'];
         $content  =  unserialize($data['content']);
 
-        /** @var $job \SlmQueue\Job\JobInterface */
-        $job = $this->getJobPluginManager()->get($name);
-
+        $job = $this->createJob($name);
         $job->setContent($content);
         $job->setMetadata($metadata);
-
-        if ($job instanceof QueueAwareInterface) {
-            $job->setQueue($this);
-        }
 
         return $job;
     }
@@ -99,5 +93,22 @@ abstract class AbstractQueue implements QueueInterface
         );
 
         return json_encode($data);
+    }
+
+    /**
+     * Create a job instance based on the name
+     *
+     * @param  string $string
+     * @return \SlmQueue\Job\JobInterface
+     */
+    public function createJob($name) {
+        /** @var $job \SlmQueue\Job\JobInterface */
+        $job = $this->getJobPluginManager()->get($name);
+
+        if ($job instanceof QueueAwareInterface) {
+            $job->setQueue($this);
+        }
+
+        return $job;
     }
 }
